@@ -14,7 +14,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Check latest Nuvio release
         id: release
@@ -26,7 +26,15 @@ jobs:
             -H "Authorization: Bearer $GH_TOKEN" \
             "https://api.github.com/repos/NuvioMedia/NuvioDesktop/releases?per_page=100" |
             jq -r '
-              map(select(.draft == false))
+              map(
+                select(.draft == false)
+                | select(
+                    any(
+                      .assets[];
+                      .name | test("^Nuvio-macOS-arm64-.*\\.dmg$")
+                    )
+                  )
+              )
               | sort_by(.published_at)
               | reverse
               | .[0]
@@ -50,8 +58,8 @@ jobs:
             exit 1
           fi
 
-          echo "Latest version: $version"
-          echo "Download: $url"
+          echo "Latest Nuvio version: $version"
+          echo "ARM64 download: $url"
 
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "url=$url" >> "$GITHUB_OUTPUT"
