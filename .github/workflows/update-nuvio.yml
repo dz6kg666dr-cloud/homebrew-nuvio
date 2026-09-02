@@ -1,0 +1,103 @@
+name: Update Nuvio
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check latest Nuvio release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release=$(curl -fsSL \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/NuvioMedia/NuvioDesktop/releases?per_page=100" |
+            jq -r '
+              map(select(.draft == false))
+              | sort_by(.published_at)
+              | reverse
+              | .[0]
+            ')
+
+          version=$(echo "$release" | jq -r '.tag_name')
+
+          url=$(echo "$release" | jq -r '
+            .assets[]
+            | select(.name | test("^Nuvio-macOS-arm64-.*\\.dmg$"))
+            | .browser_download_url
+          ')
+
+          if [ -z "$version" ] || [ "$version" = "null" ]; then
+            echo "Could not find latest Nuvio version"
+            exit 1
+          fi
+
+          if [ -z "$url" ] || [ "$url" = "null" ]; then
+            echo "Could not find ARM64 DMG"
+            exit 1
+          fi
+
+          echo "Latest version: $version"
+          echo "Download: $url"
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Calculate SHA256
+        id: checksum
+        env:
+          URL: ${{ steps.release.outputs.url }}
+        run: |
+          curl -fL "$URL" -o Nuvio.dmg
+
+          sha256=$(shasum -a 256 Nuvio.dmg | awk '{print $1}')
+
+          echo "SHA256: $sha256"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+
+      - name: Update cask
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          SHA256: ${{ steps.checksum.outputs.sha256 }}
+        run: |
+          cat > Casks/nuvio.rb <<EOF
+          cask "nuvio" do
+            version "$VERSION"
+            sha256 "$SHA256"
+
+            url "https://github.com/NuvioMedia/NuvioDesktop/releases/download/#{version}/Nuvio-macOS-arm64-#{version}.dmg"
+
+            name "Nuvio"
+            desc "Nuvio Desktop"
+            homepage "https://github.com/NuvioMedia/NuvioDesktop"
+
+            app "Nuvio.app"
+          end
+          EOF
+
+      - name: Commit update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add Casks/nuvio.rb
+
+          if git diff --cached --quiet; then
+            echo "Nuvio is already up to date."
+          else
+            git commit -m "Update Nuvio to ${{ steps.release.outputs.version }}"
+            git push
+          fi
