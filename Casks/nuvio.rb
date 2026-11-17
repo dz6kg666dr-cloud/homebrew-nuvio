@@ -1,6 +1,6 @@
 cask "nuvio" do
-  version "0.1.36-alpha"
-  sha256 "8da41505125e1c164024aa57a89186318a2a8ca6af725983bd023c805fcf2a31"
+  version "0.1.37-alpha"
+  sha256 "9835d5a800672ffeb7be759f358d1a190bcaf56545ccdaed502016da243c87de"
 
   url "https://github.com/NuvioMedia/NuvioDesktop/releases/download/#{version}/Nuvio-macOS-arm64-#{version}.dmg"
 
